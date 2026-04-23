@@ -1,36 +1,128 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Devmail
 
-## Getting Started
+Minimal full-stack personal email dashboard and outreach tool built with:
 
-First, run the development server:
+- `Next.js` App Router
+- `Resend` for outbound email and inbound reply handling
+- `Neon` Postgres for storage
+- `Drizzle ORM` for schema and queries
+- Vercel-style serverless route handlers under `src/app/api`
+
+## What it does
+
+- Send emails from a simple compose panel
+- Receive inbound replies through a Resend webhook
+- Store sent and received emails in Postgres
+- Display stored emails in a lightweight dashboard UI
+
+The structure is intentionally small, with room to add campaigns, threading, and automation later.
+
+## Environment variables
+
+Copy `.env.example` to `.env.local` and fill in the values:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Required:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `DATABASE_URL`
+- `RESEND_API_KEY`
+- `MAIL_FROM`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Recommended:
 
-## Learn More
+- `RESEND_WEBHOOK_SECRET`
+- `REPLY_TO_EMAIL`
+- `RESEND_INBOUND_ADDRESS`
 
-To learn more about Next.js, take a look at the following resources:
+## Local development
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Install dependencies and run the app:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+pnpm install
+pnpm dev
+```
 
-## Deploy on Vercel
+Open `http://localhost:3000`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Database setup
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Push the Drizzle schema to Neon:
+
+```bash
+pnpm db:push
+```
+
+The schema lives in [src/lib/db/schema.ts](/home/farouk/Documents/devmail/src/lib/db/schema.ts) and currently creates:
+
+- `emails`
+- `webhook_events`
+
+The schema already includes nullable fields such as `thread_key`, `campaign_id`, and `metadata` so the app can grow without a major rewrite.
+
+## Resend setup
+
+### Sending
+
+1. Create a Resend API key.
+2. Verify your sending domain in Resend.
+3. Set `MAIL_FROM` to a verified sender, for example `Devmail <hello@yourdomain.com>`.
+
+### Receiving replies
+
+1. Configure a receiving address in Resend.
+2. Point it to either:
+   - a Resend-managed `*.resend.app` inbound domain, or
+   - your own domain with the required `MX` record
+3. Set your webhook endpoint to:
+
+```text
+https://your-app.vercel.app/api/webhooks/resend
+```
+
+4. Subscribe the webhook to at least:
+   - `email.received`
+   - `email.sent`
+   - `email.delivered`
+   - `email.bounced`
+
+5. Copy the webhook signing secret into `RESEND_WEBHOOK_SECRET`.
+
+When Resend sends an `email.received` event, the app verifies the webhook, fetches the full inbound email body from Resend, and stores it in Neon.
+
+## API routes
+
+- `GET /api/health`
+- `GET /api/emails`
+- `POST /api/emails/send`
+- `POST /api/webhooks/resend`
+
+## Project structure
+
+```text
+src/
+  app/
+    api/
+      emails/
+      health/
+      webhooks/
+    dashboard/
+  components/
+    email-dashboard.tsx
+  lib/
+    db/
+      client.ts
+      schema.ts
+    env.ts
+    mail-store.ts
+    resend.ts
+```
+
+## Notes for future features
+
+- `thread_key` and `in_reply_to` leave room for conversation threading.
+- `campaign_id` leaves room for outbound campaign grouping.
+- `metadata` can hold automation state or provider-specific details without schema churn.
